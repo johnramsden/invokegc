@@ -1,3 +1,6 @@
+#define _GNU_SOURCE
+// Needed for O_DIRECT
+
 #include "invokegc.h"
 #include "util.h"
 
@@ -15,6 +18,7 @@
 #include <stdbool.h>
 #include <sys/ioctl.h>
 #include <linux/fs.h>
+#include <time.h>
 
 // Emulate dumb workload, good for ZNS
 
@@ -29,20 +33,9 @@
 // on SSD and ZNS and also graph how latency avg/stdev changes over time. Plot CDF
 // of latencies.
 
-#define BUFFER_SIZE 4096  // Size of each buffer (1 MiB in this example)
-#define GIGABYTE 1024*1024*1024
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <pthread.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <string.h>
-#include <stdbool.h>
-#include <time.h>
-
-#define BUFFER_SIZE 4096
 #define FILL_BUFFER_SIZE 1024*1024
+#define BUFFER_SIZE 4096  // Size of each buffer
+#define GIGABYTE 1024*1024*1024
 
 // Structure to hold thread arguments
 typedef struct {
@@ -213,7 +206,7 @@ off_t get_device_size(int fd) {
 }
 
 void print_usage(char *prog_name) {
-    fprintf(stderr, "Usage: %s -d <device_path> -w <number_of_writer_threads> -r <number_of_reader_threads> -s <total_size_to_process_gb> [-o (read only)] [-l (load only)]\n", prog_name);
+    fprintf(stderr, "Usage: %s -d <device_path> -w <number_of_writer_threads> -r <number_of_reader_threads> -s <total_size_to_process_gb> [-D use O_DIRECT|O_SYNC] [-o (read only)] [-l (load only)]\n", prog_name);
 }
 
 int main(int argc, char *argv[]) {
@@ -230,8 +223,10 @@ int main(int argc, char *argv[]) {
     size_t total_size_to_process = 0;
     int read_only = 0;  // Default to false
     int load_only = 0;       // Default to false
+    int use_o_direct = 0;    // O_DIRECT flag (default to off)
+    size_t alignment_size = BUFFER_SIZE;  // Default alignment size
 
-    while ((opt = getopt(argc, argv, "d:w:r:s:ol")) != -1) {
+    while ((opt = getopt(argc, argv, "d:w:r:s:olD")) != -1) {
         switch (opt) {
             case 'd':
                 device_path = optarg;
@@ -251,6 +246,9 @@ int main(int argc, char *argv[]) {
             case 'l':
                 load_only = 1;
                 break;
+            case 'D':
+                use_o_direct = 1;
+                break;
             default:
                 print_usage(argv[0]);
                 exit(EXIT_FAILURE);
@@ -264,12 +262,22 @@ int main(int argc, char *argv[]) {
     }
 
     size_t size_per_read_thread = 0;
-    if ((!read_only) && (!load_only)) {
+    if (!load_only) {
         size_per_read_thread = total_size_to_process / num_reader_threads;
     }
-    size_t size_per_write_thread = total_size_to_process / num_writer_threads;
 
-    int fd = open(device_path, O_RDWR);  // Open for both reading and writing
+    size_t size_per_write_thread = 0;
+    if (!read_only) {
+        size_per_write_thread = total_size_to_process / num_writer_threads;
+    }
+
+    // Open the device with optional O_DIRECT
+    int flags = O_RDWR;
+    if (use_o_direct) {
+        flags |= (O_DIRECT|O_SYNC);
+    }
+
+    int fd = open(device_path, flags);
     if (fd == -1) {
         perror("open");
         return 1;

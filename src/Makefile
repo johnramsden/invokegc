@@ -23,7 +23,7 @@ OBJ = $(patsubst %,$(ODIR)/%,$(_OBJ))
 $(ODIR)/%.o: %.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)
 
-znsccache: $(OBJ)
+invokegc: $(OBJ)
 	$(CC) -o $@ $^ $(CFLAGS) $(LIBS) $(LDIR)
 
 .PHONY: clean
