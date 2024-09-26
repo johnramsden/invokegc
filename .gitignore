@@ -1,5 +1,5 @@
 *.o
-src/znsccache
+src/invokegc
 /credentials.json
 /disk*
 .idea
