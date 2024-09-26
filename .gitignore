@@ -1,0 +1,7 @@
+*.o
+src/znsccache
+/credentials.json
+/disk*
+.idea
+/old
+/benchmarks
